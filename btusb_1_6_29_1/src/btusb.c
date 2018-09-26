@@ -27,7 +27,8 @@
 #include <linux/slab.h>
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
-
+#include <linux/usb.h>
+#include <linux/skbuff.h>
 #include "btusb.h"
 #include "hcidefs.h"
 
@@ -35,6 +36,14 @@
 
 // forward reference
 struct usb_driver btusb_driver;
+
+/* Global parameters for bt usb char driver */
+#define BT_CHAR_DEVICE_NAME "btusb0"
+static int bt_char_dev_registered;
+static dev_t bt_devid; /* bt char device number */
+dev_t dev_num;
+static struct cdev bt_char_dev; /* bt character device structure */
+static struct class *bt_char_class; /* device class for usb char driver */
 
 // table of devices that work with this driver
 static struct usb_device_id btusb_table [] =
@@ -107,6 +116,64 @@ static struct file_operations btusb_fops =
     .release = btusb_release,
 };
 
+static int btchr_init(void)
+{
+    int res = 0;
+    struct device *dev;
+
+    BTUSB_INFO("Register usb char device interface for BT driver");
+
+    bt_char_class = class_create(THIS_MODULE, BT_CHAR_DEVICE_NAME);
+    if (IS_ERR(bt_char_class)) {
+        BTUSB_ERR("Failed to create bt char class");
+        return PTR_ERR(bt_char_class);
+    }
+
+    res = alloc_chrdev_region(&bt_devid, BTUSB_MINOR_BASE, 1, BT_CHAR_DEVICE_NAME);
+    //dev_num=MKDEV(180,BTUSB_MINOR_BASE);
+    //res = register_chrdev_region(dev_num,1,BT_CHAR_DEVICE_NAME);
+    if (res < 0) {
+        BTUSB_ERR("Failed to allocate bt char device");
+        goto err_alloc;
+    }
+
+    dev = device_create(bt_char_class, NULL, bt_devid, NULL, BT_CHAR_DEVICE_NAME);
+    if (IS_ERR(dev)) {
+        BTUSB_ERR("Failed to create bt char device");
+        res = PTR_ERR(dev);
+        goto err_create;
+    }
+
+    cdev_init(&bt_char_dev, &btusb_fops);
+    res = cdev_add(&bt_char_dev, bt_devid, 1);
+    if (res < 0) {
+        BTUSB_ERR("Failed to add bt char device");
+        goto err_add;
+    }
+
+    return 0;
+
+err_add:
+    device_destroy(bt_char_class, bt_devid);
+err_create:
+    unregister_chrdev_region(bt_devid, 1);
+err_alloc:
+    class_destroy(bt_char_class);
+    return res;
+}
+
+static void btchr_exit(void)
+{
+    BTUSB_INFO("Unregister usb char device interface for BT driver");
+
+    device_destroy(bt_char_class, bt_devid);
+    cdev_del(&bt_char_dev);
+    unregister_chrdev_region(bt_devid, 1);
+    class_destroy(bt_char_class);
+
+    return;
+}
+
 /*
  * usb class driver info in order to get a minor number from the usb core,
  * and to have the device registered with devfs and the driver core
@@ -115,8 +182,7 @@ static struct usb_class_driver btusb_class =
 {
     .name = "usb/btusb%d",
     .fops = &btusb_fops,
-    .minor_base = BTUSB_MINOR_BASE,
-};
+    .minor_base = BTUSB_MINOR_BASE, };
 
 
 // static functions
@@ -1575,6 +1641,12 @@ static int __init btusb_init(void)
 {
     int result;
 
+    result = btchr_init();
+    if (result < 0) {
+        /* usb register will go on, even bt char register failed */
+        BTUSB_ERR("Failed to register usb char device interfaces");
+    } else
+        bt_char_dev_registered = 1;
     //BTUSB_DBG("built %s,%s\n", __DATE__, __TIME__);
 
     // initialize the GKI
@@ -1607,7 +1679,8 @@ static void __exit btusb_exit(void)
 
     // shutdown the GKI
     GKI_shutdown();
-
+    if (bt_char_dev_registered > 0)
+        btchr_exit();
     // deregister this driver from the USB subsystem
     usb_deregister(&btusb_driver);
 }
