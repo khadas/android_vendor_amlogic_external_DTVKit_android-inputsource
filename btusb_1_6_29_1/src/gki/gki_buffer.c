@@ -277,19 +277,20 @@ static void gki_add_to_pool_list(UINT8 pool_id)
 static void gki_remove_from_pool_list(UINT8 pool_id)
 {
     UINT8   i;
- 
+
     for (i = 0; i < gki_cb.curr_total_no_of_pools; i++)
     {
         if (pool_id == gki_cb.pool_list[i])
             break;
     }
 
-    while (i < (GKI_NUM_TOTAL_BUF_POOLS - 1))
-    {
-        gki_cb.pool_list[i] = gki_cb.pool_list[i+1];
-        i++;
+    if (GKI_NUM_TOTAL_BUF_POOLS > 1) {
+        while (i < (GKI_NUM_TOTAL_BUF_POOLS - 1))
+        {
+            gki_cb.pool_list[i] = gki_cb.pool_list[i+1];
+            i++;
+        }
     }
-
     return;
 }
 

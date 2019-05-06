@@ -2236,7 +2236,7 @@ static int btusb_debug_show(struct seq_file *s, void *unused)
             seq_printf(s, "ERROR (endpoint not found)\n");
         }
         seq_printf(s, "      * ACL RX : ");
-        if (p_dev->p_acl_in)
+        if (p_dev->p_acl_in && p_dev->p_event_in)
         {
             seq_printf(s, "ep = 0x%02x\n", p_dev->p_event_in->desc.bEndpointAddress);
         }
