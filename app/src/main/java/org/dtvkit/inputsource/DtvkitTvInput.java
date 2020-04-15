@@ -2606,7 +2606,8 @@ public class DtvkitTvInput extends TvInputService implements SystemControlManage
                             }
                             playerState = PlayerState.STOPPED;
                             if (recordedProgram != null) {
-                                currentPosition = recordedProgram.getEndTimeUtcMillis();
+                                /*trigger the playback exit*/
+                                currentPosition = recordedProgram.getRecordingDurationMillis();
                             }
 
                             break;
